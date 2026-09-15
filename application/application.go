@@ -1,5 +1,7 @@
 package application
 
+import "time"
+
 type Flags struct {
 	Quiet             bool
 	KeepAlive         bool
@@ -17,6 +19,8 @@ type Flags struct {
 	TlsKey            string
 	Output            string
 	Reversed          bool
+	Pin               bool
+	PinTTL            time.Duration
 }
 
 type App struct {

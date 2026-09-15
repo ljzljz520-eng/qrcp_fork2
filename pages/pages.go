@@ -348,3 +348,131 @@ var Done = `
 </body>
 </html>
 `
+
+// Pin is the two-factor authorization page served on mobile: the user must
+// type the short PIN displayed on the host computer before the transfer
+// capability token is exchanged for a session.
+var Pin = `
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>qrcp &mdash; PIN required</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f4f7fa;
+            color: #1f2d3d;
+        }
+        .card {
+            width: 100%;
+            max-width: 360px;
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(31, 45, 61, 0.12);
+            padding: 32px 28px;
+            text-align: center;
+        }
+        .lock {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 12px;
+        }
+        h1 { font-size: 22px; margin: 8px 0 4px; }
+        .hint { font-size: 14px; color: #5b6b7b; margin: 0 0 24px; line-height: 1.5; }
+        form { margin: 0; }
+        input[name="pin"] {
+            width: 100%;
+            font-size: 34px;
+            letter-spacing: 0.5em;
+            text-align: center;
+            padding: 12px 0 12px 0.5em;
+            border: 2px solid #d3dce6;
+            border-radius: 12px;
+            outline: none;
+            -moz-appearance: textfield;
+        }
+        input[name="pin"]:focus { border-color: #00aeef; }
+        button {
+            width: 100%;
+            margin-top: 18px;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+            background: #00aeef;
+            border: 0;
+            border-radius: 12px;
+        }
+        button:active { background: #0096cc; }
+        .banner {
+            margin: 0 0 18px;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 14px;
+            line-height: 1.45;
+            text-align: left;
+        }
+        .banner.error { background: #fdecea; color: #b3261e; border: 1px solid #f5c6c2; }
+        .terminal {
+            margin-top: 22px;
+            padding: 14px;
+            border-radius: 10px;
+            background: #f4f7fa;
+            color: #5b6b7b;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <main class="card">
+        <svg class="lock" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M6 10V8a6 6 0 1 1 12 0v2" stroke="#00aeef" stroke-width="2" stroke-linecap="round"/>
+            <rect x="4" y="10" width="16" height="11" rx="2" fill="#00aeef"/>
+            <circle cx="12" cy="15" r="1.6" fill="#fff"/>
+            <path d="M12 16.6V18.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+        <h1>Enter PIN</h1>
+        {{if .Error}}
+        <div class="banner error" role="alert">{{.Error}}</div>
+        {{end}}
+        {{if .Disabled}}
+        <p class="hint">Authorization is no longer possible with this QR code. Run qrcp again on the host computer to generate a new code and PIN.</p>
+        {{else}}
+        <p class="hint">Type the <b>{{.PINLength}}-digit PIN</b> displayed in the terminal on the computer running qrcp.</p>
+        <form method="post" action="{{.Route}}" autocomplete="off">
+            <input type="hidden" name="next" value="{{.Next}}">
+            <input type="text" name="pin" inputmode="numeric" pattern="[0-9]*"
+                   maxlength="{{.PINLength}}" autofocus required
+                   aria-label="PIN" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;">
+            <button type="submit">Unlock transfer</button>
+        </form>
+        {{end}}
+        <div class="terminal">The QR code grants access to this device only. It expires shortly after being generated and cannot be reused once unlocked.</div>
+    </main>
+    <script>
+        (function () {
+            var input = document.querySelector('input[name="pin"]');
+            if (!input) { return; }
+            var max = parseInt(input.getAttribute('maxlength'), 10);
+            input.addEventListener('input', function () {
+                var digits = input.value.replace(/\D/g, '').slice(0, max);
+                input.value = digits;
+                if (digits.length === max) {
+                    input.form.submit();
+                }
+            });
+        })();
+    </script>
+</body>
+</html>
+`

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/adrg/xdg"
 	"github.com/asaskevich/govalidator"
@@ -18,17 +19,19 @@ import (
 )
 
 type Config struct {
-	Interface string `yaml:",omitempty"`
-	Port      int    `yaml:",omitempty"`
-	Bind      string `yaml:",omitempty"`
-	KeepAlive bool   `yaml:",omitempty"`
-	Path      string `yaml:",omitempty"`
-	Secure    bool   `yaml:",omitempty"`
-	TlsKey    string `yaml:",omitempty"`
-	TlsCert   string `yaml:",omitempty"`
-	FQDN      string `yaml:",omitempty"`
-	Output    string `yaml:",omitempty"`
-	Reversed  bool   `yaml:",omitempty"`
+	Interface string        `yaml:",omitempty"`
+	Port      int           `yaml:",omitempty"`
+	Bind      string        `yaml:",omitempty"`
+	KeepAlive bool          `yaml:",omitempty"`
+	Path      string        `yaml:",omitempty"`
+	Secure    bool          `yaml:",omitempty"`
+	TlsKey    string        `yaml:",omitempty"`
+	TlsCert   string        `yaml:",omitempty"`
+	FQDN      string        `yaml:",omitempty"`
+	Output    string        `yaml:",omitempty"`
+	Reversed  bool          `yaml:",omitempty"`
+	Pin       bool          `yaml:",omitempty"`
+	PinTTL    time.Duration `yaml:",omitempty"`
 }
 
 var interactive bool = false
@@ -65,6 +68,8 @@ func New(app application.App) Config {
 	cfg.FQDN = v.GetString("fqdn")
 	cfg.Output = v.GetString("output")
 	cfg.Reversed = v.GetBool("reversed")
+	cfg.Pin = v.GetBool("pin")
+	cfg.PinTTL = v.GetDuration("pin-ttl")
 
 	// Override
 	if app.Flags.Interface != "" {
@@ -99,6 +104,12 @@ func New(app application.App) Config {
 	}
 	if app.Flags.Reversed {
 		cfg.Reversed = true
+	}
+	if app.Flags.Pin {
+		cfg.Pin = true
+	}
+	if app.Flags.PinTTL > 0 {
+		cfg.PinTTL = app.Flags.PinTTL
 	}
 
 	// Discover interface if it's not been set yet

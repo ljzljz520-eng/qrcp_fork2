@@ -31,6 +31,8 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&app.Flags.TlsCert, "tls-cert", "", "path to TLS certificate to use with HTTPS")
 	rootCmd.PersistentFlags().StringVar(&app.Flags.TlsKey, "tls-key", "", "path to TLS private key to use with HTTPS")
 	rootCmd.PersistentFlags().BoolVarP(&app.Flags.Reversed, "reversed", "r", false, "Reverse QR code (black text on white background)")
+	rootCmd.PersistentFlags().BoolVarP(&app.Flags.Pin, "pin", "P", false, "enable two-factor authorization: scan the QR capability token, then type the short PIN shown on screen")
+	rootCmd.PersistentFlags().DurationVar(&app.Flags.PinTTL, "pin-ttl", 0, "time window to enter the PIN before the QR capability token expires (default 3m)")
 	// Receive command flags
 	receiveCmd.PersistentFlags().StringVarP(&app.Flags.Output, "output", "o", "", "output directory for receiving files")
 }

@@ -29,6 +29,12 @@ func receiveCmdFunc(command *cobra.Command, args []string) error {
 	log.Print(srv.ReceiveURL)
 	// Renders the QR
 	qr.RenderString(srv.ReceiveURL, cfg.Reversed)
+	if srv.AuthEnabled() {
+		log.Print("------------------------------------------------------------------------")
+		log.Print(fmt.Sprintf("Two-factor authorization ENABLED. Type this PIN on your phone:  %s", srv.PIN()))
+		log.Print(fmt.Sprintf("The QR code is valid for %s and can be unlocked on one device only.", srv.PINTTL()))
+		log.Print("------------------------------------------------------------------------")
+	}
 	if app.Flags.Browser {
 		srv.DisplayQR(srv.ReceiveURL)
 	}

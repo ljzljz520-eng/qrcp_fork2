@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/claudiodangelis/qrcp/qr"
 
@@ -41,6 +42,28 @@ type Server struct {
 	// expectParallelRequests is set to true when qrcp sends files, in order
 	// to support downloading of parallel chunks
 	expectParallelRequests bool
+	// Two-factor authorization (QR capability token + PIN)
+	caps   *capabilityRegistry
+	pin    string
+	pinTTL time.Duration
+}
+
+// AuthEnabled reports whether the QR + PIN two-factor protocol is active.
+func (s *Server) AuthEnabled() bool {
+	return s.caps != nil
+}
+
+// PIN returns the out-of-band PIN the mobile user must enter.
+func (s *Server) PIN() string {
+	return s.pin
+}
+
+// PINTTL returns the validity window of the unredeemed capability token.
+func (s *Server) PINTTL() time.Duration {
+	if s.pinTTL <= 0 {
+		return defaultCapabilityTTL
+	}
+	return s.pinTTL
 }
 
 // ReceiveTo sets the output directory
@@ -126,6 +149,29 @@ func New(cfg *config.Config) (*Server, error) {
 	if path == "" {
 		path = util.GetRandomURLPath()
 	}
+	// Two-factor authorization: replace the guessable random path with a
+	// high-entropy, short-lived capability token. The matching PIN is
+	// displayed out-of-band on the host screen and must be entered on the
+	// phone before the token can be exchanged for a transfer session.
+	if cfg.Pin {
+		caps := newCapabilityRegistry()
+		pinCode, err := generatePIN(defaultPINLength)
+		if err != nil {
+			return nil, err
+		}
+		pinTTL := cfg.PinTTL
+		if pinTTL <= 0 {
+			pinTTL = defaultCapabilityTTL
+		}
+		token, err := caps.issue(pinCode, pinTTL)
+		if err != nil {
+			return nil, err
+		}
+		path = token
+		app.caps = caps
+		app.pin = pinCode
+		app.pinTTL = pinTTL
+	}
 	// Set the hostname
 	hostname := fmt.Sprintf("%s:%d", bind, port)
 	// Use external IP when using `interface: any`, unless a FQDN is set
@@ -193,6 +239,11 @@ func New(cfg *config.Config) (*Server, error) {
 	// Create handlers
 	// Send handler (sends file to caller)
 	http.HandleFunc("/send/"+path, func(w http.ResponseWriter, r *http.Request) {
+		// Two-factor gate: without a session exchanged for the correct
+		// PIN the PIN entry page is served instead of the file.
+		if cfg.Pin && !authorizeTransfer(w, r, app.caps, "/send") {
+			return
+		}
 		if !cfg.KeepAlive && strings.HasPrefix(r.Header.Get("User-Agent"), "Mozilla") {
 			if cookie.Value == "" {
 				initCookie.Do(func() {
@@ -241,6 +292,11 @@ func New(cfg *config.Config) (*Server, error) {
 		htmlVariables.Route = "/receive/" + path
 		switch r.Method {
 		case "POST":
+			// Two-factor gate: uploads are rejected until the PIN has
+			// been exchanged for a session.
+			if cfg.Pin && !authorizeTransfer(w, r, app.caps, "/receive") {
+				return
+			}
 			filenames := util.ReadFilenames(app.outputDir)
 			reader, err := r.MultipartReader()
 			if err != nil {
@@ -318,9 +374,46 @@ func New(cfg *config.Config) (*Server, error) {
 				app.stopChannel <- true
 			}
 		case "GET":
+			// Two-factor gate: the upload form is only served after
+			// successful PIN verification.
+			if cfg.Pin && !authorizeTransfer(w, r, app.caps, "/receive") {
+				return
+			}
 			serveTemplate("upload", pages.Upload, w, htmlVariables)
 		}
 	})
+	// PIN exchange endpoint: POST capability token + PIN, receive an
+	// HttpOnly session cookie and redirect to the transfer route.
+	if cfg.Pin {
+		http.HandleFunc("/auth/"+path, func(w http.ResponseWriter, r *http.Request) {
+			token := strings.TrimPrefix(r.URL.Path, "/auth/")
+			target, session, ok := redeemPINRequest(w, r, app.caps, cfg.Secure)
+			if !ok {
+				if capItem, found := app.caps.get(token); found {
+					if att := capItem.Attempts(); att > 0 && att < maxPINAttempts {
+						log.Printf("Wrong PIN entered from %s (%d/%d attempts)",
+							r.RemoteAddr, att, maxPINAttempts)
+					} else if att >= maxPINAttempts {
+						log.Printf("Capability token revoked after %d wrong PINs from %s",
+							att, r.RemoteAddr)
+					}
+				}
+				return
+			}
+			// Sync the legacy first-client cookie with the new session so
+			// parallel chunk downloads pass the existing cookie check.
+			initCookie.Do(func() {
+				cookie.Value = session
+				http.SetCookie(w, &http.Cookie{
+					Name:  cookie.Name,
+					Value: session,
+					Path:  "/",
+				})
+			})
+			log.Printf("PIN verified by %s, transfer unlocked", r.RemoteAddr)
+			http.Redirect(w, r, target, http.StatusSeeOther)
+		})
+	}
 	// Wait for all wg to be done, then send shutdown signal
 	go func() {
 		waitgroup.Wait()
